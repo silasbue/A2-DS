@@ -10,7 +10,7 @@ We have made a implementation of a package, which is represented by a struct cal
 
 ## b) Does your implementation use threads or processes? Why is it not realistic to use threads?
 
-yes, our implementation uses go routines to simulate the process.
+Yes, our implementation uses go routines to simulate the process.
 This is not realistic in a real implementation since the process would happen between different systems across a network.
 Threads does not make sense in
 
