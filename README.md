@@ -26,4 +26,4 @@ We dont handle message loss, since we have simulated this part of the process.
 
 ## e) Why is the 3-way handshake important?
 
-To make sure that the connection is established and that to assure that the receiver knows which packages to receive, and also knows when a package has been lost.
+To make sure that the connection is established and to assure that the receiver knows which packages to receive, and also knows when a package has been lost.
