@@ -16,10 +16,12 @@ Threads does not make sense in
 
 ## c) How do you handle message re-ordering?
 
-We dont handle message re-ordering, since we only send one message at a time.
+Re-ordering is when the messages don't arrive in the same order, which they were sent. This can cause problems in multiple cases. One example is if a web server sends an html file to a client. If this message is split up into fragments, reordered and then assembled in an incorrect order, this would lead to big problems.
+We dont handle message re-ordering, since we only send one message at a time. This message also won't be split into fragments, which therefore can't be re-ordered.
 
 ## d) How do you handle message loss?
 
+Message loss is when a message is sent, but never gets received. The problems with this are obvious. This can be caused by multiple things. Device failures, connection loss (physical and wireless), etc. Here it is important that a system won't wait forever until a message arrives, since if the message is lost, the system will halt forever.
 We dont handle message loss, since we have simulated this part of the process.
 
 ## e) Why is the 3-way handshake important?
