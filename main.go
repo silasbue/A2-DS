@@ -51,8 +51,18 @@ func client(ip int, inbox chan _package, outgoing chan _package, userInbox chan 
 		recieved := false
 
 		go func() {
-			p = <-inbox
-			recieved = true
+			for !recieved {
+				rp := <-inbox
+				if p.seq != 0 && p.ack == 0 && p.fin == 0 && p.data == "" { //
+					recieved = rp.seq != 0 && rp.ack != 0 && p.fin == 0 && p.data == ""
+				} else if p.seq != 0 && p.ack != 0 && p.fin == 0 && p.data == "" {
+					recieved = rp.seq == 0 && rp.ack != 0 && p.fin == 0 && p.data == ""
+				} else if p.seq == 0 && p.ack == 0 && p.fin == 0 && p.data != "" {
+					recieved = rp.seq == 0 && rp.ack != 0 && rp.fin == 0 && rp.data != ""
+				} else if p.seq == 0 && p.ack != 0 && rp.fin == 0 && p.data != "" {
+					recieved = rp.seq == 0 && rp.ack != 0 && rp.fin == 0 && rp.data != ""
+				}
+			}
 		}()
 
 		for !recieved {
@@ -66,42 +76,23 @@ func client(ip int, inbox chan _package, outgoing chan _package, userInbox chan 
 	verifyAck := func(SYN, ACK int) bool {
 		return SYN+1 == ACK
 	}
-	establishConn := func() (bool, int) {
-		for {
-			request := <-userInbox
-
-			// Establish connection using three-way handshake
-			var received _package = _package{}
-			SYN := 1
-			for received == (_package{}) || verifyAck(SYN, received.ack) {
-				sendPackage(_package{ip, request.desIP, SYN, 0, 0, ""})
-
-				go receivePackage(received)
-				time.Sleep(1 * time.Second)
-			}
-
-			SYN++
-			sendPackage(_package{ip, request.desIP, SYN, received.seq + 1, 0, ""})
-
-			return true, received.ack
-		}
-	}
 
 	for {
 		select {
 		case request := <-userInbox: // Sender
 
-			isEstablished, seq := establishConn()
+			// Three-way handshake
+			p := exchangePackages(_package{ip, request.desIP, 1, 0, 0, ""})
 
-			if isEstablished {
-				message := request.data
+			outgoing <- _package{ip, request.desIP, 0, p.seq + 1, 0, ""}
 
-				for i := 0; i < len(message); i++ {
-					seq++
-					outgoing <- _package{ip, request.desIP, 0, seq, 0, string(message[i])}
-				}
+			message := request.data
 
+			for i := 0; i < len(message); i++ {
+				seq++
+				outgoing <- _package{ip, request.desIP, 0, seq, 0, string(message[i])}
 			}
+
 		case p := <-inbox: // Receiver
 
 			if p.seq != 0 && p.ack == 0 {
@@ -142,7 +133,7 @@ type userRequest struct {
 	simError int
 }
 
-// userInterface for managing the pro
+// userInterface for managing the program
 func userInterface(chann []chan userRequest) {
 	fmt.Println("Welcome to a TCP/IP simulation")
 	fmt.Println("------------------------------")
