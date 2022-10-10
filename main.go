@@ -2,78 +2,218 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 )
 
+var requestDone bool = false
+
 func main() {
-	ch := make(chan present)
+	clientAmount := 5
 
-	go client(ch)
-	go server(ch)
-
-	time.Sleep(10 * time.Second)
-}
-
-func client(chann chan present) {
-	//Inital sending containing sync-key
-	clientsync := 1
-	sending := present{clientsync, 0, 0}
-
-	chann <- sending
-	fmt.Println("Client: syn sent")
-
-	//Recieves ack-key and verifies it
-	received := <-chann
-	ack := received.ack
-	time.Sleep(10 * time.Millisecond)
-
-	if ack == clientsync+1 {
-		fmt.Println("Client: correct syn+ack recieved")
+	// Initialize channels
+	forwarderChann := make(chan _package)
+	var clientChannels []chan _package
+	for i := 0; i < clientAmount; i++ {
+		clientChannels = append(clientChannels, make(chan _package))
 	}
 
-	serverSync := received.sync
+	var userChannels []chan userRequest
+	for i := 0; i < clientAmount; i++ {
+		userChannels = append(userChannels, make(chan userRequest))
+	}
 
-	//Sends ack-key to server
-	sending = present{0, serverSync + 1, 0}
-	chann <- sending
-	fmt.Println("Client: ack sent")
+	// Run goroutines
+	go postNord(forwarderChann, clientChannels)
 
-	//Sends data to server
-	sending = present{0, 0, 9203947783953}
-	chann <- sending
-	fmt.Println("Client: data package sent")
+	for i, chann := range clientChannels {
+		go client(i, chann, forwarderChann, userChannels[i])
+	}
+
+	// Run user interface
+	userInterface(userChannels)
+
+	// What to simulate (perfect, message loss, re-ordering, etc)
+
+	// Which client to communicate between
+
 }
 
-func server(chann chan present) {
-	//Recieves syn-key
-	received := <-chann
-	time.Sleep(10 * time.Millisecond)
-	clientSync := received.sync
-	serverSync := 4
-	fmt.Println("Server: syn recieved")
+func client(ip int, inbox chan _package, outgoing chan _package, userInbox chan userRequest) {
+	sendPackage := func(p _package) {
+		outgoing <- p
+	}
+	receivePackage := func(p _package) {
+		p = <-inbox
+	}
 
-	//Sends syn+ack-key to client
-	sending := present{serverSync, clientSync + 1, 0}
-	chann <- sending
-	fmt.Println("Server: syn+ack sent")
+	exchangePackages := func(p _package) _package {
+		recieved := false
 
-	//Recieves ack-key and verifies it
-	received = <-chann
-	time.Sleep(10 * time.Millisecond)
+		go func() {
+			p = <-inbox
+			recieved = true
+		}()
 
-	if received.ack == serverSync+1 {
-		fmt.Println("Server: correct ack recieved")
-		//Recieves data from client
-		received = <-chann
-		time.Sleep(10 * time.Millisecond)
-		fmt.Println("Server: data recieved, is: ", received.data)
-	} else {
-		fmt.Println("Server: Recieved wrong ack")
+		for !recieved {
+			outgoing <- p
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		return p
+	}
+
+	verifyAck := func(SYN, ACK int) bool {
+		return SYN+1 == ACK
+	}
+	establishConn := func() (bool, int) {
+		for {
+			request := <-userInbox
+
+			// Establish connection using three-way handshake
+			var received _package = _package{}
+			SYN := 1
+			for received == (_package{}) || verifyAck(SYN, received.ack) {
+				sendPackage(_package{ip, request.desIP, SYN, 0, 0, ""})
+
+				go receivePackage(received)
+				time.Sleep(1 * time.Second)
+			}
+
+			SYN++
+			sendPackage(_package{ip, request.desIP, SYN, received.seq + 1, 0, ""})
+
+			return true, received.ack
+		}
+	}
+
+	for {
+		select {
+		case request := <-userInbox: // Sender
+
+			isEstablished, seq := establishConn()
+
+			if isEstablished {
+				message := request.data
+
+				for i := 0; i < len(message); i++ {
+					seq++
+					outgoing <- _package{ip, request.desIP, 0, seq, 0, string(message[i])}
+				}
+
+			}
+		case p := <-inbox: // Receiver
+
+			if p.seq != 0 && p.ack == 0 {
+				p = exchangePackages(_package{ip, p.srcIP, 1, p.seq + 1, 0, ""})
+			}
+			if p.seq == 0 && p.ack != 0 {
+
+			}
+
+		}
+	}
+
+}
+
+func postNord(chann chan _package, clientChannels []chan _package) {
+	for {
+		// Listen for packages
+		p := <-chann
+
+		// Send package to client
+		// Here, message loss, re-ordering, delay, etc will be simulated
+		clientChannels[p.desIP] <- p
 	}
 }
 
-type present struct {
-	sync int
-	ack  int
-	data int
+type _package struct {
+	srcIP int
+	desIP int
+	seq   int
+	ack   int
+	fin   int
+	data  string
+}
+
+type userRequest struct {
+	desIP    int
+	data     string
+	simError int
+}
+
+// userInterface for managing the pro
+func userInterface(chann []chan userRequest) {
+	fmt.Println("Welcome to a TCP/IP simulation")
+	fmt.Println("------------------------------")
+
+	for {
+		requestDone = false
+		fmt.Println("Please enter a value to start")
+		fmt.Println("1) Start a new simulation")
+		fmt.Println("2) Exit")
+
+		var input int
+		fmt.Scanln(&input)
+
+		if input == 2 {
+			os.Exit(3)
+		}
+
+		fmt.Println("Please choose a client to communicate from")
+		fmt.Println("0) Thore")
+		fmt.Println("1) Riko")
+		fmt.Println("2) Troels")
+		fmt.Println("3) Rasmus")
+
+		var from int
+		fmt.Scanln(&from)
+
+		fmt.Println("Please choose a client to communicate to")
+		if from == 0 {
+			fmt.Println("1) Riko")
+			fmt.Println("2) Troels")
+			fmt.Println("3) Rasmus")
+		} else if from == 1 {
+			fmt.Println("0) Thore")
+			fmt.Println("2) Troels")
+			fmt.Println("3) Rasmus")
+		} else if from == 2 {
+			fmt.Println("0) Thore")
+			fmt.Println("1) Riko")
+			fmt.Println("3) Rasmus")
+		} else if from == 3 {
+			fmt.Println("0) Thore")
+			fmt.Println("1) Riko")
+			fmt.Println("2) Troels")
+		}
+
+		var to int
+		fmt.Scanln(&to)
+
+		fmt.Println("Please write a message to send:")
+		var message string
+		fmt.Scanln(&message)
+
+		fmt.Println("Choose simulation cases:")
+		fmt.Println("0) Perfect")
+		fmt.Println("1) Message loss")
+		fmt.Println("2) Re-ordering")
+		fmt.Println("3) Delay")
+		fmt.Println("4) All")
+
+		var simulationCase int
+		fmt.Scanln(&simulationCase)
+
+		fmt.Println("Starting simulation...")
+		fmt.Println("------------------------------")
+
+		newRequest := userRequest{to, message, simulationCase}
+		chann[from] <- newRequest
+
+		for !requestDone {
+			time.Sleep(1 * time.Second)
+		}
+	}
+
 }
